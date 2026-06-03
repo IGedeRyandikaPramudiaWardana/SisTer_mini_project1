@@ -4,13 +4,11 @@ const nextConfig: NextConfig = {
   async rewrites() {
     return [
       {
-        // Setiap request dari Next.js ke /api/submit 
-        // akan diteruskan diam-diam ke Nginx kita di port 8080
-        source: '/api/submit',
-        destination: 'http://localhost:8080/submit',
-      },
+        source: '/api/:path*',
+        destination: 'http://127.0.0.1:8080/:path*' // Meneruskan SEMUA ke Nginx
+      }
     ]
-  },
+  }
 };
 
 export default nextConfig;

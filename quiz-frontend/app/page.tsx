@@ -19,23 +19,36 @@ export default function Home() {
   };
 
   // Fungsi Polling: Mengecek nilai ke server setiap 1 detik
+  // Fungsi Polling: Mengecek nilai ke server setiap 1 detik
   const pollResult = async (submissionId: number) => {
     try {
       const res = await fetch(`/api/result/${submissionId}`);
+
+      // --- PROTEKSI BARU ---
+      // Cek apakah balasan server benar-benar JSON. Jika bukan (misal HTML 404), skip dan coba lagi.
+      const contentType = res.headers.get("content-type");
+      if (!contentType || !contentType.includes("application/json")) {
+        console.warn("Server belum siap / mengembalikan HTML. Mencoba lagi...");
+        setTimeout(() => pollResult(submissionId), 1500);
+        return;
+      }
+      // ---------------------
+
       const data = await res.json();
 
-      if (data.status === 'graded') {
+      if (res.ok && data.status === 'graded') {
         setFinalScore(data.score);
         setResultDetails(data.details);
         setLoading(false); // Matikan efek loading
         setMessage("✅ Nilai berhasil keluar!");
       } else {
-        // Jika status masih 'pending', ulangi cek 1 detik lagi
+        // Jika status masih 'pending' atau error sementara, ulangi cek 1 detik lagi
         setTimeout(() => pollResult(submissionId), 1000);
       }
     } catch (e) {
-      console.error(e);
-      setLoading(false);
+      console.error("Koneksi gagal, mencoba ulang:", e);
+      // Jika internet putus sesaat, jangan crash, coba lagi 2 detik kemudian
+      setTimeout(() => pollResult(submissionId), 2000);
     }
   };
 
