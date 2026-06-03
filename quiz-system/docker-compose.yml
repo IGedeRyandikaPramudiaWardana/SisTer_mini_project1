@@ -51,6 +51,5 @@ services:
       - api1
       - api2 
 
-# Mendaftarkan ruang penyimpanan bersama
 volumes:
   shared_db:

@@ -1,0 +1,73 @@
+version: '3.8'
+
+services:
+  rabbitmq:
+    image: rabbitmq:3-management
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+
+  api1:
+    build: .
+    command: python api_gateway.py
+    depends_on:
+      - rabbitmq
+    volumes:
+      - shared_db:/app/instance
+
+  api2:
+    build: .
+    command: python api_gateway.py
+    depends_on:
+      - rabbitmq
+    volumes:
+      - shared_db:/app/instance
+
+  worker-1:
+    build: .
+    command: python worker.py
+    environment:
+      NODE_NAME: "worker-1"
+      NODE_ID: "1"
+      ALL_NODES: "worker-1:1,worker-2:2,worker-3:3"
+    depends_on:
+      - rabbitmq
+    volumes:
+      - shared_db:/app/instance
+
+  worker-2:
+    build: .
+    command: python worker.py
+    environment:
+      NODE_NAME: "worker-2"
+      NODE_ID: "2"
+      ALL_NODES: "worker-1:1,worker-2:2,worker-3:3"
+    depends_on:
+      - rabbitmq
+    volumes:
+      - shared_db:/app/instance
+
+  worker-3:
+    build: .
+    command: python worker.py
+    environment:
+      NODE_NAME: "worker-3"
+      NODE_ID: "3"
+      ALL_NODES: "worker-1:1,worker-2:2,worker-3:3"
+    depends_on:
+      - rabbitmq
+    volumes:
+      - shared_db:/app/instance
+
+  nginx_lb:
+    image: nginx:latest
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf
+    ports:
+      - "8080:80"
+    depends_on:
+      - api1
+      - api2
+
+volumes:
+  shared_db:
