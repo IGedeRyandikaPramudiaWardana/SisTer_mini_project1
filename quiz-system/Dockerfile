@@ -1,6 +1,9 @@
 # Menggunakan Python versi ringan
 FROM python:3.13-slim
 
+# Mencegah Python menahan output log (Matikan Buffering)
+ENV PYTHONUNBUFFERED=1
+
 # Menentukan direktori kerja di dalam container
 WORKDIR /app
 

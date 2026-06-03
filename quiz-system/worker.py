@@ -1,41 +1,78 @@
 import pika
 import json
 import time
+import re
 from app import app, db
 from models import QuizSubmission
 
+# Kunci jawaban yang sudah ditetapkan
+MATH_ANSWER_KEYS = {
+    "soal_1": "4",
+    "soal_2": "7",
+    "soal_3": "3",
+    "soal_4": "5",
+    "soal_5": "2"
+}
+
+def clean_answer(answer_str):
+    # Membersihkan spasi untuk mentolerir salah ketik (contoh " 4 " menjadi "4")
+    return re.sub(r'\s+', '', str(answer_str)).lower()
+
 def callback(ch, method, properties, body):
-    # Mengambil pesan dari RabbitMQ
     message = json.loads(body)
     submission_id = message['submission_id']
-    answers = message['answers']
+    student_answers = message['answers']
     
-    print(f"[*] Memproses jawaban untuk ID: {submission_id}")
+    print(f"\n[*] Memproses jawaban untuk ID: {submission_id}")
+    time.sleep(1) # Beri nafas sedikit agar API selesai menulis ke database
     
-    # Simulasi proses penilaian yang butuh waktu (misal: mengecek kecurangan/AI)
-    time.sleep(3) 
+    correct_count = 0
+    details = {} # Menyimpan riwayat benar/salah
     
-    # Logika penilaian pura-pura (menghitung jumlah karakter jawaban * 2)
-    score = len(str(answers)) * 2 
+    for key, correct_val in MATH_ANSWER_KEYS.items():
+        student_val = student_answers.get(key, "") 
+        cleaned_student = clean_answer(student_val)
+        cleaned_key = clean_answer(correct_val)
+        
+        if cleaned_student == cleaned_key:
+            correct_count += 1
+            details[key] = True  # Tandai soal ini BENAR
+            print(f"    -> [BENAR] {key}")
+        else:
+            details[key] = False # Tandai soal ini SALAH
+            print(f"    -> [SALAH] {key}: Dijawab '{cleaned_student}', Seharusnya '{cleaned_key}'")
+            
+    score = correct_count * 20 
+    print(f"[*] Kalkulasi Selesai! Skor: {score}. Menyimpan ke database...")
     
-    # Menyimpan nilai akhir ke database
-    with app.app_context():
-        submission = db.session.get(QuizSubmission, submission_id)
-        if submission:
-            submission.score = score
-            submission.status = 'graded'
-            db.session.commit()
-            print(f"[v] Selesai! ID: {submission_id} dapat nilai {score}")
+    # Proteksi Database (Mencegah Silent Crash)
+    try:
+        with app.app_context():
+            submission = db.session.get(QuizSubmission, submission_id)
+            if submission:
+                submission.score = score
+                submission.status = 'graded'
+                submission.details = json.dumps(details) # Simpan riwayat ke DB
+                db.session.commit()
+                print(f"[v] SUKSES! Data ID: {submission_id} tersimpan.\n")
+    except Exception as e:
+        print(f"[X] GAGAL menyimpan ke DB: {e}\n")
 
-# Terhubung ke RabbitMQ
-connection = pika.BlockingConnection(pika.ConnectionParameters('rabbitmq'))
+# --- PERBAIKAN: Logika Kesabaran (Retry Loop) ---
+print("Mencoba menghubungi RabbitMQ...")
+while True:
+    try:
+        connection = pika.BlockingConnection(pika.ConnectionParameters('rabbitmq'))
+        print("Berhasil terhubung ke RabbitMQ!")
+        break # Keluar dari loop jika berhasil
+    except pika.exceptions.AMQPConnectionError:
+        print("RabbitMQ belum siap, mencoba menelepon lagi dalam 5 detik...")
+        time.sleep(5) # Jeda 5 detik sebelum mencoba lagi
+# ------------------------------------------------
+
 channel = connection.channel()
-
-# Memastikan antrean 'grading_queue' ada
 channel.queue_declare(queue='grading_queue')
-
-# Memberitahu RabbitMQ untuk menggunakan fungsi 'callback' saat ada pesan masuk
 channel.basic_consume(queue='grading_queue', on_message_callback=callback, auto_ack=True)
 
-print(' [*] Worker aktif. Menunggu pesan di antrean... Tekan CTRL+C untuk keluar')
+print(' [*] Worker Matematika aktif. Menunggu pesan di antrean...')
 channel.start_consuming()
