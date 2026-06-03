@@ -19,6 +19,8 @@ services:
     depends_on:
       - rabbitmq
       - rpc_user_service
+    volumes:
+      - shared_db:/app/instance  # <-- Pintu rahasia untuk API 1
 
   api2:
     build: .
@@ -26,6 +28,8 @@ services:
     depends_on:
       - rabbitmq
       - rpc_user_service
+    volumes:
+      - shared_db:/app/instance  # <-- Pintu rahasia untuk API 2
 
   worker:
     build: .
@@ -33,7 +37,9 @@ services:
     depends_on:
       - rabbitmq
     deploy:
-      replicas: 2 # Langsung menjalankan 2 worker sekaligus!
+      replicas: 2
+    volumes:
+      - shared_db:/app/instance  # <-- Pintu rahasia untuk Pekerja
 
   nginx_lb:
     image: nginx:latest
@@ -43,4 +49,8 @@ services:
       - "8080:80"
     depends_on:
       - api1
-      - api2
+      - api2 
+
+# Mendaftarkan ruang penyimpanan bersama
+volumes:
+  shared_db:
