@@ -7,21 +7,36 @@ services:
       - "5672:5672"
       - "15672:15672"
 
+  db:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: quiz_user
+      POSTGRES_PASSWORD: quiz_password
+      POSTGRES_DB: quiz_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
   api1:
     build: .
     command: python api_gateway.py
+    environment:
+      - DATABASE_URL=postgresql://quiz_user:quiz_password@db:5432/quiz_db
+      - RABBITMQ_HOST=rabbitmq
     depends_on:
       - rabbitmq
-    volumes:
-      - shared_db:/app/instance
+      - db
 
   api2:
     build: .
     command: python api_gateway.py
+    environment:
+      - DATABASE_URL=postgresql://quiz_user:quiz_password@db:5432/quiz_db
+      - RABBITMQ_HOST=rabbitmq
     depends_on:
       - rabbitmq
-    volumes:
-      - shared_db:/app/instance
+      - db
 
   worker-1:
     build: .
@@ -30,10 +45,11 @@ services:
       NODE_NAME: "worker-1"
       NODE_ID: "1"
       ALL_NODES: "worker-1:1,worker-2:2,worker-3:3"
+      DATABASE_URL: postgresql://quiz_user:quiz_password@db:5432/quiz_db
+      RABBITMQ_HOST: rabbitmq
     depends_on:
       - rabbitmq
-    volumes:
-      - shared_db:/app/instance
+      - db
 
   worker-2:
     build: .
@@ -42,10 +58,11 @@ services:
       NODE_NAME: "worker-2"
       NODE_ID: "2"
       ALL_NODES: "worker-1:1,worker-2:2,worker-3:3"
+      DATABASE_URL: postgresql://quiz_user:quiz_password@db:5432/quiz_db
+      RABBITMQ_HOST: rabbitmq
     depends_on:
       - rabbitmq
-    volumes:
-      - shared_db:/app/instance
+      - db
 
   worker-3:
     build: .
@@ -54,10 +71,11 @@ services:
       NODE_NAME: "worker-3"
       NODE_ID: "3"
       ALL_NODES: "worker-1:1,worker-2:2,worker-3:3"
+      DATABASE_URL: postgresql://quiz_user:quiz_password@db:5432/quiz_db
+      RABBITMQ_HOST: rabbitmq
     depends_on:
       - rabbitmq
-    volumes:
-      - shared_db:/app/instance
+      - db
 
   nginx_lb:
     image: nginx:latest
@@ -70,4 +88,4 @@ services:
       - api2
 
 volumes:
-  shared_db:
+  pgdata:

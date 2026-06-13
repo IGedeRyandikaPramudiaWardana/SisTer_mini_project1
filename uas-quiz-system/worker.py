@@ -1,4 +1,4 @@
-import os, time, threading, logging, json, re
+import os, time, threading, logging, json, re, random
 from typing import Dict, Optional
 import requests
 import pika
@@ -6,13 +6,18 @@ from flask import Flask, request, jsonify
 from models import db, QuizSubmission
 from sqlalchemy.sql import func
 
+
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:////app/instance/quiz.db?timeout=20'
+app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv(
+    'DATABASE_URL', 
+    'postgresql://quiz_user:quiz_password@db:5432/quiz_db'
+)
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db.init_app(app)
 
 log_werkzeug = logging.getLogger('werkzeug')
 log_werkzeug.setLevel(logging.ERROR)
+
 
 NODE_NAME = os.getenv("NODE_NAME", "worker-1")
 NODE_ID = int(os.getenv("NODE_ID", "1"))
@@ -118,7 +123,8 @@ def start_rabbitmq_consumer():
 
     while True:
         try:
-            conn = pika.BlockingConnection(pika.ConnectionParameters('rabbitmq'))
+            rabbitmq_host = os.getenv('RABBITMQ_HOST', 'rabbitmq')
+            conn = pika.BlockingConnection(pika.ConnectionParameters(rabbitmq_host))
             ch = conn.channel()
             break
         except Exception:
@@ -181,7 +187,24 @@ def bootstrap():
 
 if __name__ == "__main__":
     with app.app_context():
-        db.create_all()
+        # Looping untuk menunggu PostgreSQL benar-benar siap
+        retries = 10
+        while retries > 0:
+            try:
+                db.create_all()
+                print(f"✅ [{NODE_NAME}] Tabel database berhasil disiapkan!")
+                break
+            except Exception as e:
+                error_msg = str(e)
+                # Jika tabrakan karena balapan buat tabel, anggap sukses
+                if "UniqueViolation" in error_msg or "already exists" in error_msg:
+                    print(f"✅ [{NODE_NAME}] Tabel sudah dibuat oleh node lain.")
+                    break
+                
+                print(f"⏳ [{NODE_NAME}] Menunggu Database siap... (Sisa percobaan: {retries})")
+                time.sleep(3)
+                retries -= 1
+                
     threading.Thread(target=bootstrap, daemon=True).start()
     threading.Thread(target=start_rabbitmq_consumer, daemon=True).start()
     threading.Thread(target=leader_task, daemon=True).start()
